@@ -1,0 +1,66 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Dieses Smart Meter ist bereits konfiguriert."
+    },
+    "error": {
+      "invalid_billing_date": "Der gewählte Beginn des Abrechnungsjahres ist kein gültiges Datum.",
+      "source_not_found": "Die ausgewählte Entität wurde nicht gefunden.",
+      "unsupported_unit": "Die Quelle muss W, kW, Wh oder kWh verwenden."
+    },
+    "step": {
+      "user": {
+        "data": {
+          "billing_start_day": "Tag des Jahresbeginns",
+          "billing_start_month": "Monat des Jahresbeginns",
+          "meter_reading": "Aktueller Zählerstand Netzbezug",
+          "meter_reading_export": "Aktueller Zählerstand Einspeisung",
+          "source_entity": "Smart-Meter-Entität"
+        },
+        "data_description": {
+          "meter_reading": "Aktueller physischer Zählerstand für Netzbezug in kWh.",
+          "meter_reading_export": "Optionaler aktueller Stand des Einspeiseregisters (2.8.0) in kWh.",
+          "source_entity": "Sensor für Leistung (W/kW) oder kumulierte Energie (Wh/kWh). Eine vorzeichenbehaftete Leistung ermöglicht die getrennte Erfassung von Netzbezug und Einspeisung."
+        },
+        "description": "Erstellt einen virtuellen Stromzähler und erfasst Netzbezug sowie Einspeisung.",
+        "title": "Stromzähler einrichten"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "export_day": {"name": "Einspeisung heute"},
+      "export_day_average": {"name": "Einspeisung Tagesmittel je Stunde"},
+      "export_month": {"name": "Einspeisung diesen Monat"},
+      "export_month_average": {"name": "Einspeisung Monatsmittel je Tag"},
+      "export_year": {"name": "Einspeisung dieses Abrechnungsjahr"},
+      "export_year_average": {"name": "Einspeisung Jahresmittel je Monat"},
+      "import_day": {"name": "Netzbezug heute"},
+      "import_day_average": {"name": "Netzbezug Tagesmittel je Stunde"},
+      "import_month": {"name": "Netzbezug diesen Monat"},
+      "import_month_average": {"name": "Netzbezug Monatsmittel je Tag"},
+      "import_year": {"name": "Netzbezug dieses Abrechnungsjahr"},
+      "import_year_average": {"name": "Netzbezug Jahresmittel je Monat"},
+      "meter_export": {"name": "Zählerstand Einspeisung"},
+      "meter_import": {"name": "Zählerstand Netzbezug"}
+    }
+  },
+  "options": {
+    "error": {
+      "invalid_billing_date": "Der gewählte Beginn des Abrechnungsjahres ist kein gültiges Datum.",
+      "source_not_found": "Die ausgewählte Entität wurde nicht gefunden.",
+      "unsupported_unit": "Die Quelle muss W, kW, Wh oder kWh verwenden."
+    },
+    "step": {
+      "init": {
+        "data": {
+          "billing_start_day": "Tag des Jahresbeginns",
+          "billing_start_month": "Monat des Jahresbeginns",
+          "source_entity": "Smart-Meter-Entität"
+        },
+        "description": "Smart-Meter-Quelle oder Beginn des Abrechnungsjahres ändern. Die Integration wird danach automatisch neu geladen.",
+        "title": "Stromzähler-Optionen"
+      }
+    }
+  }
+}
