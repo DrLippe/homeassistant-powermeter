@@ -1,0 +1,13 @@
+{
+    "domain": "stromzaehler",
+    "name": "Stromzähler",
+    "codeowners": [
+        "@DrLippe"
+    ],
+    "config_flow": true,
+    "documentation": "https://github.com/DrLippe/homeassistant-powermeter",
+    "requirements": [],
+    "version": "0.1.0",
+    "iot_class": "cloud_polling",
+    "issue_tracker": "https://github.com/DrLippe/homeassistant-powermeter/issues"
+}
