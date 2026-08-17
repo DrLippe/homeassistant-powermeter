@@ -1,28 +1,29 @@
 {
   "config": {
-    "abort": {
-      "already_configured": "Dieses Smart Meter ist bereits konfiguriert."
-    },
+    "abort": {"already_configured": "Dieser Netzbezugszähler ist bereits konfiguriert."},
     "error": {
       "invalid_billing_date": "Der gewählte Beginn des Abrechnungsjahres ist kein gültiges Datum.",
+      "invalid_source_value": "Die ausgewählte Entität liefert aktuell keinen numerischen Energiewert.",
       "source_not_found": "Die ausgewählte Entität wurde nicht gefunden.",
-      "unsupported_unit": "Die Quelle muss W, kW, Wh oder kWh verwenden."
+      "unsupported_unit": "Die Quelle muss Wh oder kWh verwenden."
     },
     "step": {
       "user": {
         "data": {
           "billing_start_day": "Tag des Jahresbeginns",
           "billing_start_month": "Monat des Jahresbeginns",
-          "meter_reading": "Aktueller Zählerstand Netzbezug",
-          "meter_reading_export": "Aktueller Zählerstand Einspeisung",
-          "source_entity": "Smart-Meter-Entität"
+          "export_entity": "Entität Gesamteinspeisung",
+          "import_entity": "Entität Gesamtverbrauch / Netzbezug",
+          "meter_reading": "Aktueller physischer Zählerstand Netzbezug",
+          "meter_reading_export": "Aktueller physischer Zählerstand Einspeisung"
         },
         "data_description": {
-          "meter_reading": "Aktueller physischer Zählerstand für Netzbezug in kWh.",
-          "meter_reading_export": "Optionaler aktueller Stand des Einspeiseregisters (2.8.0) in kWh.",
-          "source_entity": "Sensor für Leistung (W/kW) oder kumulierte Energie (Wh/kWh). Eine vorzeichenbehaftete Leistung ermöglicht die getrennte Erfassung von Netzbezug und Einspeisung."
+          "export_entity": "Kumulierte Energieentität für die Einspeisung. Ist sie im Energiedashboard hinterlegt, wird sie automatisch vorausgewählt.",
+          "import_entity": "Kumulierte Energieentität für den Netzbezug. Ist sie im Energiedashboard hinterlegt, wird sie automatisch vorausgewählt.",
+          "meter_reading": "Physischer Zählerstand, typischerweise Register 1.8.0, in kWh. Daraus wird der Offset automatisch berechnet.",
+          "meter_reading_export": "Physischer Einspeisezählerstand, typischerweise Register 2.8.0, in kWh. Daraus wird der Offset automatisch berechnet."
         },
-        "description": "Erstellt einen virtuellen Stromzähler und erfasst Netzbezug sowie Einspeisung.",
+        "description": "Erstellt einen virtuellen Stromzähler aus kumuliertem Netzbezug und kumulierter Einspeisung.",
         "title": "Stromzähler einrichten"
       }
     }
@@ -41,24 +42,31 @@
       "import_month_average": {"name": "Netzbezug Monatsmittel je Tag"},
       "import_year": {"name": "Netzbezug dieses Abrechnungsjahr"},
       "import_year_average": {"name": "Netzbezug Jahresmittel je Monat"},
-      "meter_export": {"name": "Zählerstand Einspeisung"},
-      "meter_import": {"name": "Zählerstand Netzbezug"}
+      "meter_export": {"name": "Gesamteinspeisung"},
+      "meter_import": {"name": "Gesamtverbrauch / Netzbezug"}
     }
   },
   "options": {
     "error": {
       "invalid_billing_date": "Der gewählte Beginn des Abrechnungsjahres ist kein gültiges Datum.",
       "source_not_found": "Die ausgewählte Entität wurde nicht gefunden.",
-      "unsupported_unit": "Die Quelle muss W, kW, Wh oder kWh verwenden."
+      "unsupported_unit": "Die Quelle muss Wh oder kWh verwenden."
     },
     "step": {
       "init": {
         "data": {
           "billing_start_day": "Tag des Jahresbeginns",
           "billing_start_month": "Monat des Jahresbeginns",
-          "source_entity": "Smart-Meter-Entität"
+          "export_entity": "Entität Gesamteinspeisung",
+          "export_offset": "Offset Einspeisung",
+          "import_entity": "Entität Gesamtverbrauch / Netzbezug",
+          "import_offset": "Offset Netzbezug"
         },
-        "description": "Smart-Meter-Quelle oder Beginn des Abrechnungsjahres ändern. Die Integration wird danach automatisch neu geladen.",
+        "data_description": {
+          "export_offset": "Wird auf die Einspeiseentität addiert und ergibt den physischen Gesamtzählerstand.",
+          "import_offset": "Wird auf die Netzbezugsentität addiert und ergibt den physischen Gesamtzählerstand."
+        },
+        "description": "Quellentitäten, Offsets oder Beginn des Abrechnungsjahres ändern. Die Integration wird danach automatisch neu geladen.",
         "title": "Stromzähler-Optionen"
       }
     }
