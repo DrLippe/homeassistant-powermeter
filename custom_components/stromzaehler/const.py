@@ -5,8 +5,10 @@ from datetime import timedelta
 DOMAIN = "stromzaehler"
 PLATFORMS = ["sensor", "switch"]
 
-# Legacy source key kept for config-entry migration/backwards compatibility.
+# Legacy keys kept for config-entry migration/backwards compatibility.
 CONF_SOURCE_ENTITY = "source_entity"
+CONF_CONTRACT_NUMBER = "contract_number"
+
 CONF_IMPORT_ENTITY = "import_entity"
 CONF_EXPORT_ENTITY = "export_entity"
 CONF_METER_READING = "meter_reading"
@@ -20,17 +22,9 @@ CONF_GRID_OPERATOR = "grid_operator"
 CONF_ENERGY_SUPPLIER = "energy_supplier"
 CONF_CONTRACT_ACCOUNT = "contract_account"
 CONF_METER_NUMBER = "meter_number"
-CONF_CONTRACT_NUMBER = "contract_number"
 
 PROVIDER_NONE = "none"
 PROVIDER_EAM_NETZ = "eam_netz"
-GRID_OPERATORS = {
-    PROVIDER_NONE: "Keiner",
-    PROVIDER_EAM_NETZ: "EAM Netz GmbH",
-}
-ENERGY_SUPPLIERS = {
-    PROVIDER_NONE: "Keiner",
-}
 
 DEFAULT_NAME = "Stromzähler"
 DEFAULT_BILLING_START_DAY = 1
