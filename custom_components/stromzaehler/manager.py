@@ -20,7 +20,6 @@ from .const import (
     CONF_BILLING_START_DAY,
     CONF_BILLING_START_MONTH,
     CONF_CONTRACT_ACCOUNT,
-    CONF_CONTRACT_NUMBER,
     CONF_EXPORT_ENTITY,
     CONF_EXPORT_OFFSET,
     CONF_GRID_OPERATOR,
@@ -61,7 +60,6 @@ class StromzaehlerManager:
         self.grid_operator = str(cfg.get(CONF_GRID_OPERATOR, PROVIDER_NONE))
         self.contract_account = str(cfg.get(CONF_CONTRACT_ACCOUNT, "")).strip()
         self.meter_number = str(cfg.get(CONF_METER_NUMBER, "")).strip()
-        self.contract_number = str(cfg.get(CONF_CONTRACT_NUMBER, "")).strip()
 
         self._store: Store[dict[str, Any]] = Store(
             hass, STORE_VERSION, f"{STORE_KEY_PREFIX}.{entry.entry_id}"
@@ -92,7 +90,6 @@ class StromzaehlerManager:
                 async_get_clientsession(hass),
                 self.contract_account,
                 self.meter_number,
-                self.contract_number,
             )
 
     async def async_start(self) -> None:
