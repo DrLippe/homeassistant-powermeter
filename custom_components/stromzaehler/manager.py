@@ -26,14 +26,21 @@ from .const import (
     CONF_IMPORT_ENTITY,
     CONF_IMPORT_OFFSET,
     CONF_METER_NUMBER,
+    CONF_SUBMISSION_FREQUENCY,
     DEFAULT_BILLING_START_DAY,
     DEFAULT_BILLING_START_MONTH,
+    DEFAULT_SUBMISSION_FREQUENCY,
     FLOW_EXPORT,
     FLOW_IMPORT,
     PROVIDER_EAM_NETZ,
     PROVIDER_NONE,
     STORE_KEY_PREFIX,
     STORE_VERSION,
+    SUBMISSION_FREQUENCY_DAY,
+    SUBMISSION_FREQUENCY_MONTH,
+    SUBMISSION_FREQUENCY_QUARTER,
+    SUBMISSION_FREQUENCY_WEEK,
+    SUBMISSION_FREQUENCY_YEAR,
     SUBMISSION_INTERVAL,
     UNIT_WH,
     UPDATE_INTERVAL,
@@ -60,6 +67,9 @@ class StromzaehlerManager:
         self.grid_operator = str(cfg.get(CONF_GRID_OPERATOR, PROVIDER_NONE))
         self.contract_account = str(cfg.get(CONF_CONTRACT_ACCOUNT, "")).strip()
         self.meter_number = str(cfg.get(CONF_METER_NUMBER, "")).strip()
+        self.submission_frequency = str(
+            cfg.get(CONF_SUBMISSION_FREQUENCY, DEFAULT_SUBMISSION_FREQUENCY)
+        )
 
         self._store: Store[dict[str, Any]] = Store(
             hass, STORE_VERSION, f"{STORE_KEY_PREFIX}.{entry.entry_id}"
@@ -78,6 +88,8 @@ class StromzaehlerManager:
         self.last_submission_value: float | None = None
         self.last_submission_status = "never"
         self.last_submission_error: str | None = None
+        self.last_submission_attempt_period: str | None = None
+        self.last_submission_attempt_date: str | None = None
         self._submission_running = False
 
         self._provider = None
@@ -132,20 +144,38 @@ class StromzaehlerManager:
         if self.auto_submission_enabled:
             await self.async_try_submission(now)
 
+    def submission_period_key(self, now: datetime | None = None) -> str:
+        """Return the calendar-period key used to suppress duplicate attempts."""
+        local = dt_util.as_local(now or dt_util.now())
+        if self.submission_frequency == SUBMISSION_FREQUENCY_WEEK:
+            iso = local.isocalendar()
+            return f"{iso.year:04d}-W{iso.week:02d}"
+        if self.submission_frequency == SUBMISSION_FREQUENCY_MONTH:
+            return f"{local.year:04d}-{local.month:02d}"
+        if self.submission_frequency == SUBMISSION_FREQUENCY_QUARTER:
+            quarter = ((local.month - 1) // 3) + 1
+            return f"{local.year:04d}-Q{quarter}"
+        if self.submission_frequency == SUBMISSION_FREQUENCY_YEAR:
+            return f"{local.year:04d}"
+        return local.date().isoformat()
+
     async def async_try_submission(self, now: datetime | None = None) -> bool:
-        """Submit the current meter reading once per local calendar day."""
+        """Attempt at most one submission in the configured calendar period."""
         if not self._provider or self._submission_running:
             return False
 
         local_now = dt_util.as_local(now or dt_util.now())
-        today = local_now.date().isoformat()
-        if self.last_submission_date == today and self.last_submission_status == "success":
-            return True
+        period_key = self.submission_period_key(local_now)
+        if self.last_submission_attempt_period == period_key:
+            return self.last_submission_status == "success"
 
         reading_value = self.meter_value(FLOW_IMPORT)
         self._submission_running = True
+        self.last_submission_attempt_period = period_key
+        self.last_submission_attempt_date = local_now.date().isoformat()
         self.last_submission_status = "sending"
         self.last_submission_error = None
+        await self._async_save()
         self._notify()
         try:
             await self._provider.async_submit_meter_reading(
@@ -167,7 +197,7 @@ class StromzaehlerManager:
             _LOGGER.exception("Unexpected meter reading submission error")
             result = False
         else:
-            self.last_submission_date = today
+            self.last_submission_date = local_now.date().isoformat()
             self.last_submission_value = reading_value
             self.last_submission_status = "success"
             self.last_submission_error = None
@@ -327,6 +357,8 @@ class StromzaehlerManager:
         self.last_submission_value = float(value) if value is not None else None
         self.last_submission_status = str(data.get("last_submission_status", "never"))
         self.last_submission_error = data.get("last_submission_error")
+        self.last_submission_attempt_period = data.get("last_submission_attempt_period")
+        self.last_submission_attempt_date = data.get("last_submission_attempt_date")
 
     async def _async_save(self) -> None:
         await self._store.async_save(
@@ -349,5 +381,7 @@ class StromzaehlerManager:
                 "last_submission_value": self.last_submission_value,
                 "last_submission_status": self.last_submission_status,
                 "last_submission_error": self.last_submission_error,
+                "last_submission_attempt_period": self.last_submission_attempt_period,
+                "last_submission_attempt_date": self.last_submission_attempt_date,
             }
         )
