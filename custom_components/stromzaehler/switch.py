@@ -47,6 +47,10 @@ class AutomaticMeterSubmissionSwitch(SwitchEntity):
     def extra_state_attributes(self):
         return {
             "grid_operator": self.manager.grid_operator,
+            "submission_frequency": self.manager.submission_frequency,
+            "current_submission_period": self.manager.submission_period_key(),
+            "last_submission_attempt_period": self.manager.last_submission_attempt_period,
+            "last_submission_attempt_date": self.manager.last_submission_attempt_date,
             "last_submission_date": self.manager.last_submission_date,
             "last_submission_value_kwh": self.manager.last_submission_value,
             "last_submission_status": self.manager.last_submission_status,
