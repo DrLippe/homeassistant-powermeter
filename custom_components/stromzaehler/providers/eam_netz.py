@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from aiohttp import ClientError, ClientSession
+from aiohttp import ClientError, ClientResponseError, ClientSession
 
 from .base import MeterReadingProvider, MeterReadingSubmission
 
@@ -19,6 +19,10 @@ class EAMNetzError(Exception):
     """Base error for EAM Netz communication."""
 
 
+class EAMNetzAuthError(EAMNetzError):
+    """Authentication or credential validation failed."""
+
+
 class EAMNetzProvider(MeterReadingProvider):
     """Submit electricity meter readings to EAM Netz GmbH."""
 
@@ -27,12 +31,10 @@ class EAMNetzProvider(MeterReadingProvider):
         session: ClientSession,
         contract_account: str,
         meter_number: str,
-        contract_number: str = "",
     ) -> None:
         self._session = session
         self._contract_account = contract_account
         self._meter_number = meter_number
-        self._contract_number = contract_number
 
     async def _async_authenticate(self) -> str:
         try:
@@ -45,22 +47,34 @@ class EAMNetzProvider(MeterReadingProvider):
             ) as response:
                 response.raise_for_status()
                 payload = await response.json()
+        except ClientResponseError as err:
+            if 400 <= err.status < 500:
+                raise EAMNetzAuthError(
+                    "Vertragskontonummer oder Zählernummer wurden von EAM Netz abgelehnt"
+                ) from err
+            raise EAMNetzError(f"Authentifizierung fehlgeschlagen: {err}") from err
         except (ClientError, ValueError) as err:
             raise EAMNetzError(f"Authentifizierung fehlgeschlagen: {err}") from err
 
         token = payload.get("token") if isinstance(payload, dict) else None
         if not token:
-            raise EAMNetzError("Authentifizierung lieferte keinen API-Token")
+            raise EAMNetzAuthError("Authentifizierung lieferte keinen API-Token")
         return str(token)
 
-    async def _async_meter_metadata(self, token: str, reading_date: date) -> dict[str, Any]:
+    async def _async_meter_metadata(
+        self, token: str, reading_date: date
+    ) -> dict[str, Any]:
         url = METER_DATA_GET_ENDPOINT.format(date=reading_date.strftime("%Y%m%d"))
         try:
-            async with self._session.get(url, headers={"X-Apitoken": token}) as response:
+            async with self._session.get(
+                url, headers={"X-Apitoken": token}
+            ) as response:
                 response.raise_for_status()
                 payload = await response.json()
         except (ClientError, ValueError) as err:
-            raise EAMNetzError(f"Zählerdaten konnten nicht abgerufen werden: {err}") from err
+            raise EAMNetzError(
+                f"Zählerdaten konnten nicht abgerufen werden: {err}"
+            ) from err
 
         for account in payload.get("contractAccounts", []):
             if str(account.get("number", "")) != self._contract_account:
@@ -74,10 +88,19 @@ class EAMNetzProvider(MeterReadingProvider):
                         metadata = dict(meter)
                         metadata["contract"] = str(contract.get("number", ""))
                         return metadata
-        raise EAMNetzError("Passendes EAM-Zählwerk 1-0:1.8.0 wurde nicht gefunden")
+        raise EAMNetzAuthError(
+            "Für diese Zugangsdaten wurde kein EAM-Zählwerk 1-0:1.8.0 gefunden"
+        )
+
+    async def async_validate_credentials(self, reading_date: date) -> None:
+        """Validate login data and ensure the expected import register exists."""
+        token = await self._async_authenticate()
+        await self._async_meter_metadata(token, reading_date)
 
     @staticmethod
-    def _validate_metadata(metadata: dict[str, Any], reading_date: date, reading_kwh: float) -> None:
+    def _validate_metadata(
+        metadata: dict[str, Any], reading_date: date, reading_kwh: float
+    ) -> None:
         if metadata.get("disabled"):
             reason = metadata.get("disabledReason") or "Zählwerk ist deaktiviert"
             raise EAMNetzError(str(reason))
@@ -91,9 +114,13 @@ class EAMNetzProvider(MeterReadingProvider):
             except ValueError:
                 continue
             if lower and reading_date < boundary:
-                raise EAMNetzError(f"Ablesedatum liegt vor dem zulässigen Datum {boundary.isoformat()}")
+                raise EAMNetzError(
+                    f"Ablesedatum liegt vor dem zulässigen Datum {boundary.isoformat()}"
+                )
             if not lower and reading_date > boundary:
-                raise EAMNetzError(f"Ablesedatum liegt nach dem zulässigen Datum {boundary.isoformat()}")
+                raise EAMNetzError(
+                    f"Ablesedatum liegt nach dem zulässigen Datum {boundary.isoformat()}"
+                )
 
         last_result = metadata.get("lastReadingResult")
         if last_result is not None and reading_kwh < float(last_result):
@@ -101,7 +128,9 @@ class EAMNetzProvider(MeterReadingProvider):
                 f"Lokaler Zählerstand {reading_kwh:.3f} kWh liegt unter dem zuletzt gemeldeten Stand {float(last_result):.3f} kWh"
             )
 
-    async def async_submit_meter_reading(self, reading: MeterReadingSubmission) -> None:
+    async def async_submit_meter_reading(
+        self, reading: MeterReadingSubmission
+    ) -> None:
         """Authenticate, load metadata and submit the import register."""
         reading_date = reading.timestamp.date()
         token = await self._async_authenticate()
@@ -109,7 +138,7 @@ class EAMNetzProvider(MeterReadingProvider):
         self._validate_metadata(metadata, reading_date, reading.import_kwh)
 
         payload = {
-            "contract": self._contract_number or metadata.get("contract", ""),
+            "contract": metadata.get("contract", ""),
             "equipmentNumber": metadata.get("equipment"),
             "meterNumber": self._meter_number,
             "meterReadingDate": reading_date.strftime("%Y-%m-%d"),
@@ -129,4 +158,6 @@ class EAMNetzProvider(MeterReadingProvider):
                 response.raise_for_status()
                 await response.read()
         except ClientError as err:
-            raise EAMNetzError(f"Zählerstand konnte nicht übermittelt werden: {err}") from err
+            raise EAMNetzError(
+                f"Zählerstand konnte nicht übermittelt werden: {err}"
+            ) from err
