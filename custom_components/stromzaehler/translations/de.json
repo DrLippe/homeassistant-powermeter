@@ -47,6 +47,17 @@
     },
     "switch": {"automatic_submission": {"name": "Automatische Zählerstandsmeldung"}}
   },
+  "selector": {
+    "submission_frequency": {
+      "options": {
+        "day": "Täglich",
+        "week": "Wöchentlich",
+        "month": "Monatlich",
+        "quarter": "Quartalsweise",
+        "year": "Jährlich"
+      }
+    }
+  },
   "options": {
     "error": {
       "cannot_connect": "Die Verbindung zum Anbieter ist fehlgeschlagen. Bitte erneut versuchen.",
@@ -87,11 +98,13 @@
       "eam_netz": {
         "data": {
           "contract_account": "Vertragskontonummer",
-          "meter_number": "Zählernummer"
+          "meter_number": "Zählernummer",
+          "submission_frequency": "Meldeintervall"
         },
         "data_description": {
           "contract_account": "Vertragskontonummer für die Anmeldung im EAM-Netz-Portal.",
-          "meter_number": "Zählernummer für die Anmeldung im EAM-Netz-Portal."
+          "meter_number": "Zählernummer für die Anmeldung im EAM-Netz-Portal.",
+          "submission_frequency": "Pro gewählter Kalenderperiode erfolgt höchstens ein Meldeversuch – auch wenn dieser fehlschlägt."
         },
         "description": "Die Zugangsdaten werden vor dem Speichern bei EAM Netz geprüft. Die für die Meldung erforderliche Vertragsnummer wird automatisch aus den Zählerdaten ermittelt.",
         "title": "EAM Netz GmbH"
