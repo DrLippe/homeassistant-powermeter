@@ -1,0 +1,66 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This smart meter is already configured."
+    },
+    "error": {
+      "invalid_billing_date": "The selected billing year start is not a valid date.",
+      "source_not_found": "The selected entity could not be found.",
+      "unsupported_unit": "The source must use W, kW, Wh or kWh."
+    },
+    "step": {
+      "user": {
+        "data": {
+          "billing_start_day": "Billing year start day",
+          "billing_start_month": "Billing year start month",
+          "meter_reading": "Current import meter reading",
+          "meter_reading_export": "Current export meter reading",
+          "source_entity": "Smart meter entity"
+        },
+        "data_description": {
+          "meter_reading": "Current physical electricity meter reading for grid import in kWh.",
+          "meter_reading_export": "Optional current physical export register (2.8.0) in kWh.",
+          "source_entity": "Sensor measuring power (W/kW) or cumulative energy (Wh/kWh). Signed power enables separate import and export tracking."
+        },
+        "description": "Create a virtual electricity meter and track grid import/export.",
+        "title": "Set up electricity meter"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "export_day": {"name": "Export today"},
+      "export_day_average": {"name": "Export daily hourly average"},
+      "export_month": {"name": "Export this month"},
+      "export_month_average": {"name": "Export monthly daily average"},
+      "export_year": {"name": "Export this billing year"},
+      "export_year_average": {"name": "Export yearly monthly average"},
+      "import_day": {"name": "Grid import today"},
+      "import_day_average": {"name": "Grid import daily hourly average"},
+      "import_month": {"name": "Grid import this month"},
+      "import_month_average": {"name": "Grid import monthly daily average"},
+      "import_year": {"name": "Grid import this billing year"},
+      "import_year_average": {"name": "Grid import yearly monthly average"},
+      "meter_export": {"name": "Meter reading export"},
+      "meter_import": {"name": "Meter reading grid import"}
+    }
+  },
+  "options": {
+    "error": {
+      "invalid_billing_date": "The selected billing year start is not a valid date.",
+      "source_not_found": "The selected entity could not be found.",
+      "unsupported_unit": "The source must use W, kW, Wh or kWh."
+    },
+    "step": {
+      "init": {
+        "data": {
+          "billing_start_day": "Billing year start day",
+          "billing_start_month": "Billing year start month",
+          "source_entity": "Smart meter entity"
+        },
+        "description": "Change the source sensor or billing year. The integration is reloaded automatically.",
+        "title": "Electricity meter options"
+      }
+    }
+  }
+}
