@@ -4,6 +4,7 @@
     "error": {
       "invalid_billing_date": "The selected billing year start is not a valid date.",
       "invalid_source_value": "The selected entity currently has no numeric energy value.",
+      "required_for_provider": "This field is required for the selected provider.",
       "source_not_found": "The selected entity could not be found.",
       "unsupported_unit": "The source must use Wh or kWh."
     },
@@ -12,18 +13,26 @@
         "data": {
           "billing_start_day": "Billing year start day",
           "billing_start_month": "Billing year start month",
+          "contract_account": "Contract account",
+          "contract_number": "Contract number (optional)",
+          "energy_supplier": "Electricity supplier",
           "export_entity": "Total grid export entity",
+          "grid_operator": "Grid operator",
           "import_entity": "Total grid import entity",
+          "meter_number": "Meter number",
           "meter_reading": "Current physical grid import meter reading",
           "meter_reading_export": "Current physical export meter reading"
         },
         "data_description": {
+          "contract_account": "EAM Netz contract account used for API authentication.",
+          "contract_number": "Optional contract number. If omitted, the contract returned by EAM is used.",
           "export_entity": "Cumulative energy entity for grid export. If configured in the Energy dashboard it is preselected automatically.",
           "import_entity": "Cumulative energy entity for grid import. If configured in the Energy dashboard it is preselected automatically.",
+          "meter_number": "Physical electricity meter number used by the provider.",
           "meter_reading": "Physical meter register (typically 1.8.0) in kWh. The offset is calculated automatically.",
           "meter_reading_export": "Physical export register (typically 2.8.0) in kWh. The offset is calculated automatically."
         },
-        "description": "Create a virtual electricity meter from cumulative grid import/export entities.",
+        "description": "Create a virtual electricity meter and optionally configure a grid operator for automatic meter reading submission.",
         "title": "Set up electricity meter"
       }
     }
@@ -44,11 +53,15 @@
       "import_year_average": {"name": "Grid import yearly monthly average"},
       "meter_export": {"name": "Total grid export"},
       "meter_import": {"name": "Total grid import"}
+    },
+    "switch": {
+      "automatic_submission": {"name": "Automatic meter reading submission"}
     }
   },
   "options": {
     "error": {
       "invalid_billing_date": "The selected billing year start is not a valid date.",
+      "required_for_provider": "This field is required for the selected provider.",
       "source_not_found": "The selected entity could not be found.",
       "unsupported_unit": "The source must use Wh or kWh."
     },
@@ -57,16 +70,21 @@
         "data": {
           "billing_start_day": "Billing year start day",
           "billing_start_month": "Billing year start month",
+          "contract_account": "Contract account",
+          "contract_number": "Contract number (optional)",
+          "energy_supplier": "Electricity supplier",
           "export_entity": "Total grid export entity",
           "export_offset": "Grid export offset",
+          "grid_operator": "Grid operator",
           "import_entity": "Total grid import entity",
-          "import_offset": "Grid import offset"
+          "import_offset": "Grid import offset",
+          "meter_number": "Meter number"
         },
         "data_description": {
           "export_offset": "Added to the selected export entity to produce the physical total export meter value.",
           "import_offset": "Added to the selected import entity to produce the physical total import meter value."
         },
-        "description": "Change source entities, offsets or billing-year start. The integration reloads automatically.",
+        "description": "Change source entities, offsets, provider settings or billing-year start. The integration reloads automatically.",
         "title": "Electricity meter options"
       }
     }
