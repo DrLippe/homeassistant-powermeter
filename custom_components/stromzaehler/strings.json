@@ -47,6 +47,17 @@
     },
     "switch": {"automatic_submission": {"name": "Automatic meter reading submission"}}
   },
+  "selector": {
+    "submission_frequency": {
+      "options": {
+        "day": "Daily",
+        "week": "Weekly",
+        "month": "Monthly",
+        "quarter": "Quarterly",
+        "year": "Yearly"
+      }
+    }
+  },
   "options": {
     "error": {
       "cannot_connect": "Could not connect to the provider. Please try again.",
@@ -87,11 +98,13 @@
       "eam_netz": {
         "data": {
           "contract_account": "Contract account number",
-          "meter_number": "Meter number"
+          "meter_number": "Meter number",
+          "submission_frequency": "Automatic reporting interval"
         },
         "data_description": {
           "contract_account": "Contract account number used for the EAM Netz portal login.",
-          "meter_number": "Meter number used for the EAM Netz portal login."
+          "meter_number": "Meter number used for the EAM Netz portal login.",
+          "submission_frequency": "At most one submission attempt is made per selected calendar period, even when a submission fails."
         },
         "description": "The login is validated against EAM Netz before it is saved. The contract number required for submission is read automatically from the meter-data response.",
         "title": "EAM Netz GmbH"
