@@ -4,7 +4,6 @@
     "error": {
       "invalid_billing_date": "Der gewählte Beginn des Abrechnungsjahres ist kein gültiges Datum.",
       "invalid_source_value": "Die ausgewählte Entität liefert aktuell keinen numerischen Energiewert.",
-      "required_for_provider": "Dieses Feld ist für den ausgewählten Anbieter erforderlich.",
       "source_not_found": "Die ausgewählte Entität wurde nicht gefunden.",
       "unsupported_unit": "Die Quelle muss Wh oder kWh verwenden."
     },
@@ -13,26 +12,18 @@
         "data": {
           "billing_start_day": "Tag des Jahresbeginns",
           "billing_start_month": "Monat des Jahresbeginns",
-          "contract_account": "Vertragskonto",
-          "contract_number": "Vertragsnummer (optional)",
-          "energy_supplier": "Stromlieferant",
           "export_entity": "Entität Gesamteinspeisung",
-          "grid_operator": "Netzbetreiber",
           "import_entity": "Entität Gesamtverbrauch / Netzbezug",
-          "meter_number": "Zählernummer",
           "meter_reading": "Aktueller physischer Zählerstand Netzbezug",
           "meter_reading_export": "Aktueller physischer Zählerstand Einspeisung"
         },
         "data_description": {
-          "contract_account": "EAM-Netz-Vertragskonto für die API-Authentifizierung.",
-          "contract_number": "Optionale Vertragsnummer. Ist sie leer, wird der von EAM gelieferte Vertrag verwendet.",
           "export_entity": "Kumulierte Energieentität für die Einspeisung. Ist sie im Energiedashboard hinterlegt, wird sie automatisch vorausgewählt.",
           "import_entity": "Kumulierte Energieentität für den Netzbezug. Ist sie im Energiedashboard hinterlegt, wird sie automatisch vorausgewählt.",
-          "meter_number": "Physische Stromzählernummer beim Netzbetreiber.",
           "meter_reading": "Physischer Zählerstand, typischerweise Register 1.8.0, in kWh. Daraus wird der Offset automatisch berechnet.",
           "meter_reading_export": "Physischer Einspeisezählerstand, typischerweise Register 2.8.0, in kWh. Daraus wird der Offset automatisch berechnet."
         },
-        "description": "Erstellt einen virtuellen Stromzähler und konfiguriert optional einen Netzbetreiber für die automatische Zählerstandsmeldung.",
+        "description": "Erstellt den Stromzähler. Netzbetreiber und Stromlieferant werden anschließend über die Konfigurationsseite der Integration eingerichtet.",
         "title": "Stromzähler einrichten"
       }
     }
@@ -54,38 +45,61 @@
       "meter_export": {"name": "Gesamteinspeisung"},
       "meter_import": {"name": "Gesamtverbrauch / Netzbezug"}
     },
-    "switch": {
-      "automatic_submission": {"name": "Automatische Zählerstandsmeldung"}
-    }
+    "switch": {"automatic_submission": {"name": "Automatische Zählerstandsmeldung"}}
   },
   "options": {
     "error": {
+      "cannot_connect": "Die Verbindung zum Anbieter ist fehlgeschlagen. Bitte erneut versuchen.",
+      "invalid_auth": "Der Anbieter hat die Zugangsdaten abgelehnt.",
       "invalid_billing_date": "Der gewählte Beginn des Abrechnungsjahres ist kein gültiges Datum.",
-      "required_for_provider": "Dieses Feld ist für den ausgewählten Anbieter erforderlich.",
       "source_not_found": "Die ausgewählte Entität wurde nicht gefunden.",
       "unsupported_unit": "Die Quelle muss Wh oder kWh verwenden."
     },
     "step": {
       "init": {
+        "menu_options": {
+          "measurement": "Messung & Offsets",
+          "grid_operator": "Netzbetreiber",
+          "energy_supplier": "Stromlieferant"
+        },
+        "title": "Stromzähler konfigurieren"
+      },
+      "measurement": {
         "data": {
           "billing_start_day": "Tag des Jahresbeginns",
           "billing_start_month": "Monat des Jahresbeginns",
-          "contract_account": "Vertragskonto",
-          "contract_number": "Vertragsnummer (optional)",
-          "energy_supplier": "Stromlieferant",
           "export_entity": "Entität Gesamteinspeisung",
           "export_offset": "Offset Einspeisung",
-          "grid_operator": "Netzbetreiber",
           "import_entity": "Entität Gesamtverbrauch / Netzbezug",
-          "import_offset": "Offset Netzbezug",
-          "meter_number": "Zählernummer"
+          "import_offset": "Offset Netzbezug"
         },
         "data_description": {
           "export_offset": "Wird auf die Einspeiseentität addiert und ergibt den physischen Gesamtzählerstand.",
           "import_offset": "Wird auf die Netzbezugsentität addiert und ergibt den physischen Gesamtzählerstand."
         },
-        "description": "Quellentitäten, Offsets, Anbieter oder Beginn des Abrechnungsjahres ändern. Die Integration wird danach automatisch neu geladen.",
-        "title": "Stromzähler-Optionen"
+        "title": "Messung & Offsets"
+      },
+      "grid_operator": {
+        "data": {"grid_operator": "Netzbetreiber"},
+        "description": "Netzbetreiber auswählen. Die für den jeweiligen Anbieter benötigten Zugangsdaten werden auf der nächsten Seite abgefragt.",
+        "title": "Netzbetreiber"
+      },
+      "eam_netz": {
+        "data": {
+          "contract_account": "Vertragskontonummer",
+          "meter_number": "Zählernummer"
+        },
+        "data_description": {
+          "contract_account": "Vertragskontonummer für die Anmeldung im EAM-Netz-Portal.",
+          "meter_number": "Zählernummer für die Anmeldung im EAM-Netz-Portal."
+        },
+        "description": "Die Zugangsdaten werden vor dem Speichern bei EAM Netz geprüft. Die für die Meldung erforderliche Vertragsnummer wird automatisch aus den Zählerdaten ermittelt.",
+        "title": "EAM Netz GmbH"
+      },
+      "energy_supplier": {
+        "data": {"energy_supplier": "Stromlieferant"},
+        "description": "Stromlieferant auswählen. Lieferantenspezifische Einstellungen können unabhängig vom Netzbetreiber ergänzt werden.",
+        "title": "Stromlieferant"
       }
     }
   }
