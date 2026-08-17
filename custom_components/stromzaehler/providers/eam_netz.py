@@ -161,15 +161,23 @@ class EAMNetzProvider(MeterReadingProvider):
         self._validate_metadata(metadata, reading_date, reading.import_kwh)
 
         payload = {
-            "contract": metadata.get("contract", ""),
-            "equipmentNumber": metadata.get("equipment"),
-            "meterNumber": self._meter_number,
-            "meterReadingDate": reading_date.strftime("%Y-%m-%d"),
-            "meterReadingNew": int(reading.import_kwh),
-            "register": metadata.get("register"),
-            "division": metadata.get("division"),
-            "registerKind": metadata.get("registerKind"),
-            "contractAccount": self._contract_account,
+            "meterReadingSaveData": [
+                {
+                    "contract": metadata.get("contract", ""),
+                    "equipmentNumber": metadata.get("equipment"),
+                    "meterNumber": self._meter_number,
+                    "meterReadingDate": reading_date.strftime("%Y-%m-%d"),
+                    "meterReadingNew": str(int(reading.import_kwh)),
+                    "register": metadata.get("register"),
+                    "division": metadata.get("division"),
+                    "registerKind": metadata.get("registerKind"),
+                    "contractAccount": metadata.get("contractAccount")
+                    or self._contract_account,
+                }
+            ],
+            "phone": "",
+            "savePhone": False,
+            "sandEmail": "X",
         }
 
         try:
@@ -178,8 +186,14 @@ class EAMNetzProvider(MeterReadingProvider):
                 headers={"X-Apitoken": token},
                 json=payload,
             ) as response:
-                response.raise_for_status()
-                await response.read()
+                response_body = await response.text()
+                if response.status >= 400:
+                    details = response_body.strip() or response.reason or "keine Antwortdetails"
+                    raise EAMNetzError(
+                        f"Zählerstand konnte nicht übermittelt werden: HTTP {response.status} {details}"
+                    )
+        except EAMNetzError:
+            raise
         except ClientError as err:
             raise EAMNetzError(
                 f"Zählerstand konnte nicht übermittelt werden: {err}"
