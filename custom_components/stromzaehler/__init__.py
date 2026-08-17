@@ -8,11 +8,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_CONTRACT_ACCOUNT,
+    CONF_CONTRACT_NUMBER,
     CONF_ENERGY_SUPPLIER,
     CONF_EXPORT_OFFSET,
     CONF_GRID_OPERATOR,
     CONF_IMPORT_ENTITY,
     CONF_IMPORT_OFFSET,
+    CONF_METER_NUMBER,
     CONF_METER_READING,
     CONF_METER_READING_EXPORT,
     CONF_SOURCE_ENTITY,
@@ -47,6 +50,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: StromzaehlerConfigEntry
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate older Stromzähler config entries."""
     data = dict(entry.data)
+    options = dict(entry.options)
 
     if entry.version < 2:
         source_entity = data.get(CONF_SOURCE_ENTITY)
@@ -71,5 +75,22 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data.setdefault(CONF_GRID_OPERATOR, PROVIDER_NONE)
         data.setdefault(CONF_ENERGY_SUPPLIER, PROVIDER_NONE)
 
-    hass.config_entries.async_update_entry(entry, data=data, version=3)
+    if entry.version < 4:
+        for key in (
+            CONF_GRID_OPERATOR,
+            CONF_ENERGY_SUPPLIER,
+            CONF_CONTRACT_ACCOUNT,
+            CONF_METER_NUMBER,
+        ):
+            if key in data and key not in options:
+                options[key] = data.pop(key)
+        data.pop(CONF_CONTRACT_NUMBER, None)
+        options.pop(CONF_CONTRACT_NUMBER, None)
+
+    hass.config_entries.async_update_entry(
+        entry,
+        data=data,
+        options=options,
+        version=4,
+    )
     return True
