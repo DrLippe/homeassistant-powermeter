@@ -20,7 +20,15 @@ class EAMNetzError(Exception):
 
 
 class EAMNetzAuthError(EAMNetzError):
-    """Authentication or credential validation failed."""
+    """Authentication failed."""
+
+
+class EAMNetzMeterNotFoundError(EAMNetzError):
+    """Configured meter could not be found in EAM metadata."""
+
+
+class EAMNetzRegisterNotFoundError(EAMNetzError):
+    """Expected import register could not be found for the meter."""
 
 
 class EAMNetzProvider(MeterReadingProvider):
@@ -33,8 +41,8 @@ class EAMNetzProvider(MeterReadingProvider):
         meter_number: str,
     ) -> None:
         self._session = session
-        self._contract_account = contract_account
-        self._meter_number = meter_number
+        self._contract_account = contract_account.strip()
+        self._meter_number = meter_number.strip()
 
     async def _async_authenticate(self) -> str:
         try:
@@ -46,14 +54,14 @@ class EAMNetzProvider(MeterReadingProvider):
                 },
             ) as response:
                 response.raise_for_status()
-                payload = await response.json()
+                payload = await response.json(content_type=None)
         except ClientResponseError as err:
             if 400 <= err.status < 500:
                 raise EAMNetzAuthError(
                     "Vertragskontonummer oder Zählernummer wurden von EAM Netz abgelehnt"
                 ) from err
             raise EAMNetzError(f"Authentifizierung fehlgeschlagen: {err}") from err
-        except (ClientError, ValueError) as err:
+        except (ClientError, ValueError, TypeError) as err:
             raise EAMNetzError(f"Authentifizierung fehlgeschlagen: {err}") from err
 
         token = payload.get("token") if isinstance(payload, dict) else None
@@ -70,26 +78,41 @@ class EAMNetzProvider(MeterReadingProvider):
                 url, headers={"X-Apitoken": token}
             ) as response:
                 response.raise_for_status()
-                payload = await response.json()
-        except (ClientError, ValueError) as err:
+                payload = await response.json(content_type=None)
+        except (ClientError, ValueError, TypeError) as err:
             raise EAMNetzError(
                 f"Zählerdaten konnten nicht abgerufen werden: {err}"
             ) from err
 
+        if not isinstance(payload, dict):
+            raise EAMNetzError("EAM Netz lieferte unerwartete Zählerdaten")
+
+        matched_meter = False
         for account in payload.get("contractAccounts", []):
-            if str(account.get("number", "")) != self._contract_account:
+            if not isinstance(account, dict):
                 continue
             for contract in account.get("contracts", []):
+                if not isinstance(contract, dict):
+                    continue
                 for meter in contract.get("meters", []):
-                    if (
-                        str(meter.get("number", "")) == self._meter_number
-                        and meter.get("obis") == OBIS_IMPORT
-                    ):
-                        metadata = dict(meter)
-                        metadata["contract"] = str(contract.get("number", ""))
-                        return metadata
-        raise EAMNetzAuthError(
-            "Für diese Zugangsdaten wurde kein EAM-Zählwerk 1-0:1.8.0 gefunden"
+                    if not isinstance(meter, dict):
+                        continue
+                    if str(meter.get("number", "")).strip() != self._meter_number:
+                        continue
+                    matched_meter = True
+                    if meter.get("obis") != OBIS_IMPORT:
+                        continue
+                    metadata = dict(meter)
+                    metadata["contract"] = str(contract.get("number", ""))
+                    metadata["contractAccount"] = str(account.get("number", ""))
+                    return metadata
+
+        if matched_meter:
+            raise EAMNetzRegisterNotFoundError(
+                "Der EAM-Zähler wurde gefunden, aber das Bezugsregister 1-0:1.8.0 fehlt"
+            )
+        raise EAMNetzMeterNotFoundError(
+            "Die Anmeldung war erfolgreich, aber die Zählernummer wurde in den EAM-Zählerdaten nicht gefunden"
         )
 
     async def async_validate_credentials(self, reading_date: date) -> None:
