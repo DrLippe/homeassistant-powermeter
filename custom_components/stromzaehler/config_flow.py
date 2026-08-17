@@ -12,6 +12,8 @@ from homeassistant.components.energy.data import async_get_manager
 from homeassistant.config_entries import ConfigFlowResult, OptionsFlowWithReload
 from homeassistant.core import callback
 from homeassistant.helpers import selector
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_BILLING_START_DAY,
@@ -28,14 +30,14 @@ from .const import (
     CONF_METER_READING,
     CONF_METER_READING_EXPORT,
     DEFAULT_NAME,
-    ENERGY_SUPPLIERS,
-    GRID_OPERATORS,
+    DOMAIN,
     PROVIDER_EAM_NETZ,
     PROVIDER_NONE,
     UNIT_KWH,
     UNIT_WH,
-    DOMAIN,
 )
+from .providers.eam_netz import EAMNetzAuthError, EAMNetzError, EAMNetzProvider
+from .providers.registry import ENERGY_SUPPLIERS, GRID_PROVIDERS
 
 SUPPORTED_UNITS = {UNIT_WH, UNIT_KWH}
 
@@ -47,16 +49,22 @@ def _energy_selector() -> selector.EntitySelector:
 def _month_selector() -> selector.SelectSelector:
     return selector.SelectSelector(
         selector.SelectSelectorConfig(
-            options=[selector.SelectOptionDict(value=str(m), label=str(m)) for m in range(1, 13)],
+            options=[
+                selector.SelectOptionDict(value=str(month), label=str(month))
+                for month in range(1, 13)
+            ],
             mode=selector.SelectSelectorMode.DROPDOWN,
         )
     )
 
 
-def _provider_selector(options: dict[str, str]) -> selector.SelectSelector:
+def _provider_selector(providers) -> selector.SelectSelector:
     return selector.SelectSelector(
         selector.SelectSelectorConfig(
-            options=[selector.SelectOptionDict(value=value, label=label) for value, label in options.items()],
+            options=[
+                selector.SelectOptionDict(value=provider_id, label=definition.name)
+                for provider_id, definition in providers.items()
+            ],
             mode=selector.SelectSelectorMode.DROPDOWN,
         )
     )
@@ -74,44 +82,75 @@ def _number() -> selector.NumberSelector:
     )
 
 
-def _provider_fields(defaults: dict[str, Any]) -> dict[Any, Any]:
-    return {
-        vol.Required(CONF_GRID_OPERATOR, default=defaults.get(CONF_GRID_OPERATOR, PROVIDER_NONE)): _provider_selector(GRID_OPERATORS),
-        vol.Required(CONF_ENERGY_SUPPLIER, default=defaults.get(CONF_ENERGY_SUPPLIER, PROVIDER_NONE)): _provider_selector(ENERGY_SUPPLIERS),
-        vol.Optional(CONF_CONTRACT_ACCOUNT, default=defaults.get(CONF_CONTRACT_ACCOUNT, "")): selector.TextSelector(),
-        vol.Optional(CONF_METER_NUMBER, default=defaults.get(CONF_METER_NUMBER, "")): selector.TextSelector(),
-        vol.Optional(CONF_CONTRACT_NUMBER, default=defaults.get(CONF_CONTRACT_NUMBER, "")): selector.TextSelector(),
-    }
-
-
 def _setup_schema(defaults: dict[str, Any]) -> vol.Schema:
-    fields: dict[Any, Any] = {
-        vol.Required(CONF_IMPORT_ENTITY, default=defaults.get(CONF_IMPORT_ENTITY)): _energy_selector(),
-        vol.Optional(CONF_EXPORT_ENTITY, default=defaults.get(CONF_EXPORT_ENTITY)): _energy_selector(),
-        vol.Required(CONF_METER_READING, default=defaults.get(CONF_METER_READING, 0.0)): _number(),
-        vol.Optional(CONF_METER_READING_EXPORT, default=defaults.get(CONF_METER_READING_EXPORT, 0.0)): _number(),
-        vol.Required(CONF_BILLING_START_DAY, default=defaults.get(CONF_BILLING_START_DAY, 1)): selector.NumberSelector(
-            selector.NumberSelectorConfig(min=1, max=31, step=1, mode=selector.NumberSelectorMode.BOX)
-        ),
-        vol.Required(CONF_BILLING_START_MONTH, default=str(defaults.get(CONF_BILLING_START_MONTH, 1))): _month_selector(),
-    }
-    fields.update(_provider_fields(defaults))
-    return vol.Schema(fields)
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_IMPORT_ENTITY, default=defaults.get(CONF_IMPORT_ENTITY)
+            ): _energy_selector(),
+            vol.Optional(
+                CONF_EXPORT_ENTITY, default=defaults.get(CONF_EXPORT_ENTITY)
+            ): _energy_selector(),
+            vol.Required(
+                CONF_METER_READING, default=defaults.get(CONF_METER_READING, 0.0)
+            ): _number(),
+            vol.Optional(
+                CONF_METER_READING_EXPORT,
+                default=defaults.get(CONF_METER_READING_EXPORT, 0.0),
+            ): _number(),
+            vol.Required(
+                CONF_BILLING_START_DAY,
+                default=defaults.get(CONF_BILLING_START_DAY, 1),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=31,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Required(
+                CONF_BILLING_START_MONTH,
+                default=str(defaults.get(CONF_BILLING_START_MONTH, 1)),
+            ): _month_selector(),
+        }
+    )
 
 
-def _options_schema(defaults: dict[str, Any]) -> vol.Schema:
-    fields: dict[Any, Any] = {
-        vol.Required(CONF_IMPORT_ENTITY, default=defaults.get(CONF_IMPORT_ENTITY)): _energy_selector(),
-        vol.Optional(CONF_EXPORT_ENTITY, default=defaults.get(CONF_EXPORT_ENTITY)): _energy_selector(),
-        vol.Required(CONF_IMPORT_OFFSET, default=float(defaults.get(CONF_IMPORT_OFFSET, 0.0))): _number(),
-        vol.Required(CONF_EXPORT_OFFSET, default=float(defaults.get(CONF_EXPORT_OFFSET, 0.0))): _number(),
-        vol.Required(CONF_BILLING_START_DAY, default=defaults.get(CONF_BILLING_START_DAY, 1)): selector.NumberSelector(
-            selector.NumberSelectorConfig(min=1, max=31, step=1, mode=selector.NumberSelectorMode.BOX)
-        ),
-        vol.Required(CONF_BILLING_START_MONTH, default=str(defaults.get(CONF_BILLING_START_MONTH, 1))): _month_selector(),
-    }
-    fields.update(_provider_fields(defaults))
-    return vol.Schema(fields)
+def _measurement_options_schema(defaults: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_IMPORT_ENTITY, default=defaults.get(CONF_IMPORT_ENTITY)
+            ): _energy_selector(),
+            vol.Optional(
+                CONF_EXPORT_ENTITY, default=defaults.get(CONF_EXPORT_ENTITY)
+            ): _energy_selector(),
+            vol.Required(
+                CONF_IMPORT_OFFSET,
+                default=float(defaults.get(CONF_IMPORT_OFFSET, 0.0)),
+            ): _number(),
+            vol.Required(
+                CONF_EXPORT_OFFSET,
+                default=float(defaults.get(CONF_EXPORT_OFFSET, 0.0)),
+            ): _number(),
+            vol.Required(
+                CONF_BILLING_START_DAY,
+                default=defaults.get(CONF_BILLING_START_DAY, 1),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=31,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Required(
+                CONF_BILLING_START_MONTH,
+                default=str(defaults.get(CONF_BILLING_START_MONTH, 1)),
+            ): _month_selector(),
+        }
+    )
 
 
 async def _dashboard_grid_entities(hass) -> dict[str, str]:
@@ -128,7 +167,11 @@ async def _dashboard_grid_entities(hass) -> dict[str, str]:
                 ("stat_energy_to", CONF_EXPORT_ENTITY),
             ):
                 entity_id = source.get(pref_key)
-                if isinstance(entity_id, str) and "." in entity_id and hass.states.get(entity_id):
+                if (
+                    isinstance(entity_id, str)
+                    and "." in entity_id
+                    and hass.states.get(entity_id)
+                ):
                     found[conf_key] = entity_id
             break
     except (ImportError, AttributeError, TypeError):
@@ -140,13 +183,20 @@ def _entity_kwh(hass, entity_id: str | None) -> float | None:
     if not entity_id:
         return None
     state = hass.states.get(entity_id)
-    if state is None or state.attributes.get("unit_of_measurement") not in SUPPORTED_UNITS:
+    if (
+        state is None
+        or state.attributes.get("unit_of_measurement") not in SUPPORTED_UNITS
+    ):
         return None
     try:
         value = float(state.state)
     except (TypeError, ValueError):
         return None
-    return value / 1000.0 if state.attributes.get("unit_of_measurement") == UNIT_WH else value
+    return (
+        value / 1000.0
+        if state.attributes.get("unit_of_measurement") == UNIT_WH
+        else value
+    )
 
 
 def _validate_entity(hass, entity_id: str | None, required: bool) -> str | None:
@@ -160,21 +210,32 @@ def _validate_entity(hass, entity_id: str | None, required: bool) -> str | None:
     return None
 
 
-def _validate_provider(data: dict[str, Any], errors: dict[str, str]) -> None:
-    if data.get(CONF_GRID_OPERATOR) != PROVIDER_EAM_NETZ:
-        return
-    if not str(data.get(CONF_CONTRACT_ACCOUNT, "")).strip():
-        errors[CONF_CONTRACT_ACCOUNT] = "required_for_provider"
-    if not str(data.get(CONF_METER_NUMBER, "")).strip():
-        errors[CONF_METER_NUMBER] = "required_for_provider"
+def _validate_measurement(hass, user_input: dict[str, Any]) -> dict[str, str]:
+    errors: dict[str, str] = {}
+    if error := _validate_entity(hass, user_input.get(CONF_IMPORT_ENTITY), True):
+        errors[CONF_IMPORT_ENTITY] = error
+    if error := _validate_entity(hass, user_input.get(CONF_EXPORT_ENTITY), False):
+        errors[CONF_EXPORT_ENTITY] = error
+    try:
+        date(
+            2000,
+            int(user_input[CONF_BILLING_START_MONTH]),
+            int(user_input[CONF_BILLING_START_DAY]),
+        )
+    except ValueError:
+        errors[CONF_BILLING_START_DAY] = "invalid_billing_date"
+    return errors
 
 
 class StromzaehlerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Stromzähler."""
 
-    VERSION = 3
+    VERSION = 4
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Set up the meter measurement; providers are configured afterwards."""
         errors: dict[str, str] = {}
         defaults = dict(user_input or {})
         if user_input is None:
@@ -182,66 +243,199 @@ class StromzaehlerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             user_input = dict(user_input)
-            user_input[CONF_BILLING_START_DAY] = int(user_input[CONF_BILLING_START_DAY])
-            user_input[CONF_BILLING_START_MONTH] = int(user_input[CONF_BILLING_START_MONTH])
+            user_input[CONF_BILLING_START_DAY] = int(
+                user_input[CONF_BILLING_START_DAY]
+            )
+            user_input[CONF_BILLING_START_MONTH] = int(
+                user_input[CONF_BILLING_START_MONTH]
+            )
+            errors.update(_validate_measurement(self.hass, user_input))
 
-            if error := _validate_entity(self.hass, user_input.get(CONF_IMPORT_ENTITY), True):
-                errors[CONF_IMPORT_ENTITY] = error
-            if error := _validate_entity(self.hass, user_input.get(CONF_EXPORT_ENTITY), False):
-                errors[CONF_EXPORT_ENTITY] = error
-            try:
-                date(2000, user_input[CONF_BILLING_START_MONTH], user_input[CONF_BILLING_START_DAY])
-            except ValueError:
-                errors[CONF_BILLING_START_DAY] = "invalid_billing_date"
-            _validate_provider(user_input, errors)
-
-            import_source = _entity_kwh(self.hass, user_input.get(CONF_IMPORT_ENTITY))
-            export_source = _entity_kwh(self.hass, user_input.get(CONF_EXPORT_ENTITY))
+            import_source = _entity_kwh(
+                self.hass, user_input.get(CONF_IMPORT_ENTITY)
+            )
+            export_source = _entity_kwh(
+                self.hass, user_input.get(CONF_EXPORT_ENTITY)
+            )
             if import_source is None:
                 errors.setdefault(CONF_IMPORT_ENTITY, "invalid_source_value")
             if user_input.get(CONF_EXPORT_ENTITY) and export_source is None:
                 errors.setdefault(CONF_EXPORT_ENTITY, "invalid_source_value")
 
             if not errors:
-                user_input[CONF_IMPORT_OFFSET] = float(user_input[CONF_METER_READING]) - import_source
-                user_input[CONF_EXPORT_OFFSET] = float(user_input.get(CONF_METER_READING_EXPORT, 0.0)) - (export_source or 0.0)
+                user_input[CONF_IMPORT_OFFSET] = (
+                    float(user_input[CONF_METER_READING]) - import_source
+                )
+                user_input[CONF_EXPORT_OFFSET] = float(
+                    user_input.get(CONF_METER_READING_EXPORT, 0.0)
+                ) - (export_source or 0.0)
                 await self.async_set_unique_id(user_input[CONF_IMPORT_ENTITY])
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=DEFAULT_NAME, data=user_input)
 
-        return self.async_show_form(step_id="user", data_schema=_setup_schema(defaults), errors=errors)
+        return self.async_show_form(
+            step_id="user",
+            data_schema=_setup_schema(defaults),
+            errors=errors,
+        )
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> StromzaehlerOptionsFlow:
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> StromzaehlerOptionsFlow:
+        """Create the configuration menu."""
         return StromzaehlerOptionsFlow()
 
 
 class StromzaehlerOptionsFlow(OptionsFlowWithReload):
-    """Manage Stromzähler options."""
+    """Manage measurement and provider settings on separate pages."""
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        current = {**self.config_entry.data, **self.config_entry.options}
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the configuration menu."""
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["measurement", "grid_operator", "energy_supplier"],
+        )
+
+    def _current(self) -> dict[str, Any]:
+        return {**self.config_entry.data, **self.config_entry.options}
+
+    def _save_options(
+        self,
+        updates: dict[str, Any],
+        remove: tuple[str, ...] = (),
+    ) -> ConfigFlowResult:
+        options = dict(self.config_entry.options)
+        options.update(updates)
+        for key in remove:
+            options.pop(key, None)
+        return self.async_create_entry(data=options)
+
+    async def async_step_measurement(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure measurement entities, offsets and billing year."""
+        current = self._current()
         errors: dict[str, str] = {}
-
         if user_input is not None:
             user_input = dict(user_input)
-            user_input[CONF_BILLING_START_DAY] = int(user_input[CONF_BILLING_START_DAY])
-            user_input[CONF_BILLING_START_MONTH] = int(user_input[CONF_BILLING_START_MONTH])
-            if error := _validate_entity(self.hass, user_input.get(CONF_IMPORT_ENTITY), True):
-                errors[CONF_IMPORT_ENTITY] = error
-            if error := _validate_entity(self.hass, user_input.get(CONF_EXPORT_ENTITY), False):
-                errors[CONF_EXPORT_ENTITY] = error
-            try:
-                date(2000, user_input[CONF_BILLING_START_MONTH], user_input[CONF_BILLING_START_DAY])
-            except ValueError:
-                errors[CONF_BILLING_START_DAY] = "invalid_billing_date"
-            _validate_provider(user_input, errors)
+            user_input[CONF_BILLING_START_DAY] = int(
+                user_input[CONF_BILLING_START_DAY]
+            )
+            user_input[CONF_BILLING_START_MONTH] = int(
+                user_input[CONF_BILLING_START_MONTH]
+            )
+            errors.update(_validate_measurement(self.hass, user_input))
             if not errors:
-                return self.async_create_entry(data=user_input)
+                return self._save_options(user_input)
 
         return self.async_show_form(
-            step_id="init",
-            data_schema=_options_schema(user_input or current),
+            step_id="measurement",
+            data_schema=_measurement_options_schema(user_input or current),
             errors=errors,
+        )
+
+    async def async_step_grid_operator(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Select a grid operator and route to its own settings page."""
+        current = self._current()
+        if user_input is not None:
+            provider_id = str(user_input[CONF_GRID_OPERATOR])
+            if provider_id == PROVIDER_NONE:
+                return self._save_options(
+                    {CONF_GRID_OPERATOR: PROVIDER_NONE},
+                    remove=(
+                        CONF_CONTRACT_ACCOUNT,
+                        CONF_METER_NUMBER,
+                        CONF_CONTRACT_NUMBER,
+                    ),
+                )
+            if provider_id == PROVIDER_EAM_NETZ:
+                return await self.async_step_eam_netz()
+
+        return self.async_show_form(
+            step_id="grid_operator",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_GRID_OPERATOR,
+                        default=current.get(CONF_GRID_OPERATOR, PROVIDER_NONE),
+                    ): _provider_selector(GRID_PROVIDERS)
+                }
+            ),
+        )
+
+    async def async_step_eam_netz(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure and validate EAM Netz login data."""
+        current = self._current()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            contract_account = str(user_input[CONF_CONTRACT_ACCOUNT]).strip()
+            meter_number = str(user_input[CONF_METER_NUMBER]).strip()
+            provider = EAMNetzProvider(
+                async_get_clientsession(self.hass),
+                contract_account,
+                meter_number,
+            )
+            try:
+                await provider.async_validate_credentials(dt_util.now().date())
+            except EAMNetzAuthError:
+                errors["base"] = "invalid_auth"
+            except EAMNetzError:
+                errors["base"] = "cannot_connect"
+            else:
+                return self._save_options(
+                    {
+                        CONF_GRID_OPERATOR: PROVIDER_EAM_NETZ,
+                        CONF_CONTRACT_ACCOUNT: contract_account,
+                        CONF_METER_NUMBER: meter_number,
+                    },
+                    remove=(CONF_CONTRACT_NUMBER,),
+                )
+
+        return self.async_show_form(
+            step_id="eam_netz",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CONTRACT_ACCOUNT,
+                        default=(user_input or current).get(
+                            CONF_CONTRACT_ACCOUNT, ""
+                        ),
+                    ): selector.TextSelector(),
+                    vol.Required(
+                        CONF_METER_NUMBER,
+                        default=(user_input or current).get(CONF_METER_NUMBER, ""),
+                    ): selector.TextSelector(),
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_energy_supplier(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure the electricity supplier independently of the grid operator."""
+        current = self._current()
+        if user_input is not None:
+            return self._save_options(
+                {CONF_ENERGY_SUPPLIER: str(user_input[CONF_ENERGY_SUPPLIER])}
+            )
+
+        return self.async_show_form(
+            step_id="energy_supplier",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_ENERGY_SUPPLIER,
+                        default=current.get(CONF_ENERGY_SUPPLIER, PROVIDER_NONE),
+                    ): _provider_selector(ENERGY_SUPPLIERS)
+                }
+            ),
         )
