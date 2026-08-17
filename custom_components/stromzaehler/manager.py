@@ -1,15 +1,17 @@
-"""Measurement and persistence manager for Stromzähler."""
+"""Measurement, persistence and provider submission manager for Stromzähler."""
 
 from __future__ import annotations
 
 import calendar
 from collections.abc import Callable
 from datetime import datetime
+import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
@@ -17,23 +19,34 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_BILLING_START_DAY,
     CONF_BILLING_START_MONTH,
+    CONF_CONTRACT_ACCOUNT,
+    CONF_CONTRACT_NUMBER,
     CONF_EXPORT_ENTITY,
     CONF_EXPORT_OFFSET,
+    CONF_GRID_OPERATOR,
     CONF_IMPORT_ENTITY,
     CONF_IMPORT_OFFSET,
+    CONF_METER_NUMBER,
     DEFAULT_BILLING_START_DAY,
     DEFAULT_BILLING_START_MONTH,
     FLOW_EXPORT,
     FLOW_IMPORT,
+    PROVIDER_EAM_NETZ,
+    PROVIDER_NONE,
     STORE_KEY_PREFIX,
     STORE_VERSION,
+    SUBMISSION_INTERVAL,
     UNIT_WH,
     UPDATE_INTERVAL,
 )
+from .providers.base import MeterReadingSubmission
+from .providers.eam_netz import EAMNetzError, EAMNetzProvider
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class StromzaehlerManager:
-    """Track cumulative import/export entities and active reporting periods."""
+    """Track cumulative import/export entities and provider submissions."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
@@ -45,6 +58,10 @@ class StromzaehlerManager:
         self.export_offset = float(cfg.get(CONF_EXPORT_OFFSET, 0.0))
         self.billing_start_day = int(cfg.get(CONF_BILLING_START_DAY, DEFAULT_BILLING_START_DAY))
         self.billing_start_month = int(cfg.get(CONF_BILLING_START_MONTH, DEFAULT_BILLING_START_MONTH))
+        self.grid_operator = str(cfg.get(CONF_GRID_OPERATOR, PROVIDER_NONE))
+        self.contract_account = str(cfg.get(CONF_CONTRACT_ACCOUNT, "")).strip()
+        self.meter_number = str(cfg.get(CONF_METER_NUMBER, "")).strip()
+        self.contract_number = str(cfg.get(CONF_CONTRACT_NUMBER, "")).strip()
 
         self._store: Store[dict[str, Any]] = Store(
             hass, STORE_VERSION, f"{STORE_KEY_PREFIX}.{entry.entry_id}"
@@ -57,6 +74,26 @@ class StromzaehlerManager:
         self.month_import = self.month_export = 0.0
         self.year_import = self.year_export = 0.0
         self._day_key = self._month_key = self._year_key = ""
+
+        self.auto_submission_enabled = False
+        self.last_submission_date: str | None = None
+        self.last_submission_value: float | None = None
+        self.last_submission_status = "never"
+        self.last_submission_error: str | None = None
+        self._submission_running = False
+
+        self._provider = None
+        if (
+            self.grid_operator == PROVIDER_EAM_NETZ
+            and self.contract_account
+            and self.meter_number
+        ):
+            self._provider = EAMNetzProvider(
+                async_get_clientsession(hass),
+                self.contract_account,
+                self.meter_number,
+                self.contract_number,
+            )
 
     async def async_start(self) -> None:
         await self._async_restore()
@@ -73,6 +110,7 @@ class StromzaehlerManager:
             entities.append(self.export_entity)
         self._unsubs.append(async_track_state_change_event(self.hass, entities, self._async_source_changed))
         self._unsubs.append(async_track_time_interval(self.hass, self._async_interval, UPDATE_INTERVAL))
+        self._unsubs.append(async_track_time_interval(self.hass, self._async_submission_interval, SUBMISSION_INTERVAL))
         await self._async_save()
 
     async def async_stop(self) -> None:
@@ -80,6 +118,68 @@ class StromzaehlerManager:
             unsub()
         self._unsubs.clear()
         await self._async_save()
+
+    @property
+    def provider_supports_submission(self) -> bool:
+        return self._provider is not None
+
+    async def async_set_auto_submission(self, enabled: bool) -> None:
+        """Enable or disable automatic provider submissions."""
+        self.auto_submission_enabled = enabled
+        await self._async_save()
+        self._notify()
+        if enabled:
+            await self.async_try_submission()
+
+    async def _async_submission_interval(self, now: datetime) -> None:
+        if self.auto_submission_enabled:
+            await self.async_try_submission(now)
+
+    async def async_try_submission(self, now: datetime | None = None) -> bool:
+        """Submit the current meter reading once per local calendar day."""
+        if not self._provider or self._submission_running:
+            return False
+
+        local_now = dt_util.as_local(now or dt_util.now())
+        today = local_now.date().isoformat()
+        if self.last_submission_date == today and self.last_submission_status == "success":
+            return True
+
+        reading_value = self.meter_value(FLOW_IMPORT)
+        self._submission_running = True
+        self.last_submission_status = "sending"
+        self.last_submission_error = None
+        self._notify()
+        try:
+            await self._provider.async_submit_meter_reading(
+                MeterReadingSubmission(
+                    timestamp=local_now,
+                    import_kwh=reading_value,
+                    export_kwh=self.meter_value(FLOW_EXPORT) if self.export_entity else None,
+                    meter_number=self.meter_number,
+                )
+            )
+        except EAMNetzError as err:
+            self.last_submission_status = "error"
+            self.last_submission_error = str(err)
+            _LOGGER.warning("EAM Netz meter reading submission failed: %s", err)
+            result = False
+        except Exception as err:  # noqa: BLE001 - keep HA alive on provider failures
+            self.last_submission_status = "error"
+            self.last_submission_error = str(err)
+            _LOGGER.exception("Unexpected meter reading submission error")
+            result = False
+        else:
+            self.last_submission_date = today
+            self.last_submission_value = reading_value
+            self.last_submission_status = "success"
+            self.last_submission_error = None
+            result = True
+        finally:
+            self._submission_running = False
+            await self._async_save()
+            self._notify()
+        return result
 
     @callback
     def async_add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
@@ -224,6 +324,12 @@ class StromzaehlerManager:
         for flow in (FLOW_IMPORT, FLOW_EXPORT):
             self._last_source[flow] = data.get(f"last_source_{flow}")
             self._last_meter[flow] = float(data.get(f"last_meter_{flow}", 0.0))
+        self.auto_submission_enabled = bool(data.get("auto_submission_enabled", False))
+        self.last_submission_date = data.get("last_submission_date")
+        value = data.get("last_submission_value")
+        self.last_submission_value = float(value) if value is not None else None
+        self.last_submission_status = str(data.get("last_submission_status", "never"))
+        self.last_submission_error = data.get("last_submission_error")
 
     async def _async_save(self) -> None:
         await self._store.async_save(
@@ -241,5 +347,10 @@ class StromzaehlerManager:
                 "last_source_export": self._last_source[FLOW_EXPORT],
                 "last_meter_import": self._last_meter[FLOW_IMPORT],
                 "last_meter_export": self._last_meter[FLOW_EXPORT],
+                "auto_submission_enabled": self.auto_submission_enabled,
+                "last_submission_date": self.last_submission_date,
+                "last_submission_value": self.last_submission_value,
+                "last_submission_status": self.last_submission_status,
+                "last_submission_error": self.last_submission_error,
             }
         )
