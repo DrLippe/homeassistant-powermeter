@@ -3,7 +3,7 @@
 from datetime import timedelta
 
 DOMAIN = "stromzaehler"
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "switch"]
 
 # Legacy source key kept for config-entry migration/backwards compatibility.
 CONF_SOURCE_ENTITY = "source_entity"
@@ -16,12 +16,29 @@ CONF_EXPORT_OFFSET = "export_offset"
 CONF_BILLING_START_DAY = "billing_start_day"
 CONF_BILLING_START_MONTH = "billing_start_month"
 
+CONF_GRID_OPERATOR = "grid_operator"
+CONF_ENERGY_SUPPLIER = "energy_supplier"
+CONF_CONTRACT_ACCOUNT = "contract_account"
+CONF_METER_NUMBER = "meter_number"
+CONF_CONTRACT_NUMBER = "contract_number"
+
+PROVIDER_NONE = "none"
+PROVIDER_EAM_NETZ = "eam_netz"
+GRID_OPERATORS = {
+    PROVIDER_NONE: "Keiner",
+    PROVIDER_EAM_NETZ: "EAM Netz GmbH",
+}
+ENERGY_SUPPLIERS = {
+    PROVIDER_NONE: "Keiner",
+}
+
 DEFAULT_NAME = "Stromzähler"
 DEFAULT_BILLING_START_DAY = 1
 DEFAULT_BILLING_START_MONTH = 1
 
 UPDATE_INTERVAL = timedelta(minutes=1)
-STORE_VERSION = 1
+SUBMISSION_INTERVAL = timedelta(hours=1)
+STORE_VERSION = 3
 STORE_KEY_PREFIX = f"{DOMAIN}.state"
 
 FLOW_IMPORT = "import"
